@@ -29,6 +29,7 @@ class ChatRequest(BaseModel):
     content: str
     session_id: Optional[str] = None
     history: Optional[List[Dict[str, str]]] = None
+    model: Optional[str] = None
 
 # Ollama API configuration
 OLLAMA_API_URL = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
@@ -63,6 +64,20 @@ async def chat(message: dict):
             return response.json()
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Error connecting to Ollama: {str(e)}")
+
+@app.get("/api/models")
+async def get_models():
+    """Get list of available models from Ollama."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("http://localhost:11434/api/tags")
+            response.raise_for_status()
+            data = response.json()
+            return {"models": [model["name"] for model in data.get("models", [])]}
+    except Exception as e:
+        print(f"Error getting models: {e}")
+        # Fallback to default model if API fails
+        return {"models": [DEFAULT_MODEL]}
 
 @app.post("/api/chat/stream")
 async def chat_stream(chat_request: ChatRequest):
@@ -124,15 +139,18 @@ Assistant:"""
             )
             
         print(f"Ollama status: {status_message}")
-        print(f"Sending request to Ollama with model: {DEFAULT_MODEL}")
+        print(f"Sending request to Ollama with model: {chat_request.model or DEFAULT_MODEL}")
         
         # Make the chat completion request
         try:
             async with httpx.AsyncClient(timeout=300.0) as client:
+                # Use selected model or fallback to default
+                model = chat_request.model or DEFAULT_MODEL
+                
                 response = await client.post(
                     OLLAMA_API_URL,
                     json={
-                        "model": DEFAULT_MODEL,
+                        "model": model,
                         "prompt": prompt,
                         "stream": True,
                         "options": {

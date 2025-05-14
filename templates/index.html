@@ -82,6 +82,27 @@
         .message-bubble li {
             margin: 0.25em 0;
         }
+        
+        /* Style for thinking/reasoning content */
+        .thinking {
+            background-color: #f8fafc;
+            border-left: 3px solid #a5b4fc;
+            color: #4b5563;
+            padding: 0.75rem 1rem;
+            margin: 0.5rem 0;
+            border-radius: 0 0.5rem 0.5rem 0;
+            font-style: italic;
+            font-size: 0.95em;
+        }
+        
+        .thinking::before {
+            content: 'Thinking:';
+            display: block;
+            font-weight: 600;
+            font-style: normal;
+            color: #4f46e5;
+            margin-bottom: 0.25rem;
+        }
     </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col">
@@ -89,12 +110,17 @@
         <div class="bg-white shadow-sm">
             <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
                 <h1 class="text-xl font-semibold text-gray-800">Llama Chat</h1>
-                <button id="new-chat-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
-                    </svg>
-                    New Chat
-                </button>
+                <div class="flex items-center space-x-4">
+                    <select id="model-select" class="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="">Loading models...</option>
+                    </select>
+                    <button id="new-chat-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+                        </svg>
+                        New Chat
+                    </button>
+                </div>
             </div>
         </div>
         <div id="chat-container" class="flex-1 bg-white rounded-lg shadow-md overflow-hidden flex flex-col">
@@ -158,8 +184,40 @@
             startNewChat();
         }
         
-        // Initialize the chat when the page loads
-        document.addEventListener('DOMContentLoaded', initializeChat);
+        // Load available models
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/models');
+                const data = await response.json();
+                const modelSelect = document.getElementById('model-select');
+                
+                // Clear loading message
+                modelSelect.innerHTML = '';
+                
+                // Add models to dropdown
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+                
+                // Select the first model by default
+                if (data.models.length > 0) {
+                    modelSelect.value = data.models[0];
+                }
+            } catch (error) {
+                console.error('Error loading models:', error);
+                const modelSelect = document.getElementById('model-select');
+                modelSelect.innerHTML = '<option value="">Error loading models</option>';
+            }
+        }
+        
+        // Initialize the chat and load models when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeChat();
+            loadModels();
+        });
 
         // Start a new chat session
         function startNewChat() {
@@ -205,6 +263,8 @@
             
             // Process markdown-like formatting
             let processedContent = content
+                // Convert <think> tags to styled divs
+                .replace(/<think>([\s\S]*?)<\/think>/g, '<div class="thinking">$1</div>')
                 // Convert **bold** to <strong>bold</strong>
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                 // Convert *italic* to <em>italic</em>
@@ -332,7 +392,8 @@
                         body: JSON.stringify({
                             content: message,
                             session_id: chatSessionId,
-                            history: messageHistory
+                            history: messageHistory,
+                            model: document.getElementById('model-select').value
                         }),
                         signal: signal
                     });
