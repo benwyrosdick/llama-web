@@ -9,6 +9,7 @@ import os
 import uuid
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import markdown
 
 load_dotenv()
 
@@ -61,7 +62,11 @@ async def chat(message: dict):
                 timeout=60.0
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            # Convert Markdown to HTML
+            if "response" in data:
+                data["html"] = markdown.markdown(data["response"], extensions=["fenced_code", "codehilite"])
+            return data
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Error connecting to Ollama: {str(e)}")
 
@@ -180,17 +185,20 @@ Assistant:"""
                                 line = line.strip()
                                 if not line:
                                     continue
-                                    
                                 # Ollama sends JSON objects, one per line
                                 try:
                                     if line.startswith("data: "):
                                         line = line[6:]  # Remove 'data: ' prefix if present
-                                    
                                     # Parse the JSON to validate it
                                     try:
                                         data = json.loads(line)
                                         if "response" in data:
                                             print(f"Received chunk: {data['response'][:50]}...")  # Log first 50 chars of response
+                                            # Convert Markdown to HTML
+                                            html = markdown.markdown(data['response'], extensions=["fenced_code", "codehilite"])
+                                            # Send both raw and HTML
+                                            yield f'data: ' + json.dumps({"response": data["response"], "html": html}) + '\n\n'
+                                            continue
                                             
                                             # Add assistant's response to history as we receive it
                                             if 'response' in data and data['response'].strip():

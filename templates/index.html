@@ -171,7 +171,7 @@
                     if (messageHistory && messageHistory.length > 0) {
                         chatMessages.innerHTML = ''; // Clear any existing messages
                         messageHistory.forEach(msg => {
-                            addMessage(msg.content, msg.role === 'user');
+                            addMessage(msg.content, msg.role === 'user', false);
                         });
                         return;
                     }
@@ -242,7 +242,7 @@
         newChatBtn.addEventListener('click', startNewChat);
         
         // Add a message to the chat
-        function addMessage(content, isUser = false) {
+        function addMessage(content, isUser = false, isHtml = false) {
             // If this is a duplicate message, don't add it
             const lastMessage = chatMessages.lastElementChild;
             if (lastMessage && 
@@ -261,52 +261,57 @@
                     : 'bg-gray-100 text-gray-800 rounded-bl-sm border border-gray-200'
             } ${isUser ? 'message-user' : 'message-ai'}`;
             
-            // Process markdown-like formatting
-            let processedContent = content
-                // Convert <think> tags to styled divs
-                .replace(/<think>([\s\S]*?)<\/think>/g, '<div class="thinking">$1</div>')
-                // Convert **bold** to <strong>bold</strong>
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                // Convert *italic* to <em>italic</em>
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                // Convert `code` to <code>code</code>
-                .replace(/`([^`]+)`/g, '<code>$1</code>')
-                // Convert ```code blocks``` to <pre><code>blocks</code></pre>
-                .replace(/```(?:\w+)?\n([\s\S]*?)\n```/g, '<pre><code>$1</code></pre>')
-                // Convert - list items to <ul><li>items</li></ul>
-                .replace(/^\s*-\s+(.+)$/gm, '<li>$1</li>')
-                // Convert 1. numbered items to <ol><li>items</li></ol>
-                .replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>');
-            
-            // Wrap list items in <ul> or <ol>
-            if (processedContent.includes('<li>')) {
-                processedContent = processedContent
-                    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
-                    .replace(/<\/li><\/ul>\s*<ul>/g, '</li>');
-            }
-            
-            // Convert URLs to clickable links
-            processedContent = processedContent.replace(
-                /(https?:\/\/[^\s]+)/g, 
-                '<a href="$1" class="text-blue-500 hover:underline" target="_blank">$1</a>'
-            );
-            
-            // Split by double newlines to create paragraphs
-            const paragraphs = processedContent.split('\n\n');
-            
-            paragraphs.forEach((paragraph, index) => {
-                if (paragraph.trim() === '') return;
+            if (isHtml && !isUser) {
+                // Directly insert HTML (from backend-rendered markdown)
+                messageBubble.innerHTML = content;
+            } else {
+                // Process markdown-like formatting (legacy fallback for user messages)
+                let processedContent = content
+                    // Convert <think> tags to styled divs
+                    .replace(/<think>([\s\S]*?)<\/think>/g, '<div class="thinking">$1<\/div>')
+                    // Convert **bold** to <strong>bold</strong>
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1<\/strong>')
+                    // Convert *italic* to <em>italic<\/em>
+                    .replace(/\*(.*?)\*/g, '<em>$1<\/em>')
+                    // Convert `code` to <code>code<\/code>
+                    .replace(/`([^`]+)`/g, '<code>$1<\/code>')
+                    // Convert ```code blocks``` to <pre><code>blocks<\/code><\/pre>
+                    .replace(/```(?:\w+)?\n([\s\S]*?)\n```/g, '<pre><code>$1<\/code><\/pre>')
+                    // Convert - list items to <ul><li>items<\/li><\/ul>
+                    .replace(/^\s*-\s+(.+)$/gm, '<li>$1<\/li>')
+                    // Convert 1. numbered items to <ol><li>items<\/li><\/ol>
+                    .replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1<\/li>');
                 
-                // If it's a list or code block, add it directly
-                if (paragraph.includes('<ul>') || paragraph.includes('<ol>') || paragraph.includes('<pre>') || paragraph.includes('<code>')) {
-                    messageBubble.innerHTML += paragraph;
-                } else {
-                    const p = document.createElement('p');
-                    p.className = index < paragraphs.length - 1 ? 'mb-4' : '';
-                    p.innerHTML = paragraph || ' ';
-                    messageBubble.appendChild(p);
+                // Wrap list items in <ul> or <ol>
+                if (processedContent.includes('<li>')) {
+                    processedContent = processedContent
+                        .replace(/(<li>.*<\/li>)/gs, '<ul>$1<\/ul>')
+                        .replace(/<\/li><\/ul>\s*<ul>/g, '<\/li>');
                 }
-            });
+                
+                // Convert URLs to clickable links
+                processedContent = processedContent.replace(
+                    /(https?:\/\/[^\s]+)/g, 
+                    '<a href="$1" class="text-blue-500 hover:underline" target="_blank">$1<\/a>'
+                );
+                
+                // Split by double newlines to create paragraphs
+                const paragraphs = processedContent.split('\n\n');
+                
+                paragraphs.forEach((paragraph, index) => {
+                    if (paragraph.trim() === '') return;
+                    
+                    // If it's a list or code block, add it directly
+                    if (paragraph.includes('<ul>') || paragraph.includes('<ol>') || paragraph.includes('<pre>') || paragraph.includes('<code>')) {
+                        messageBubble.innerHTML += paragraph;
+                    } else {
+                        const p = document.createElement('p');
+                        p.className = index < paragraphs.length - 1 ? 'mb-4' : '';
+                        p.innerHTML = paragraph || ' ';
+                        messageBubble.appendChild(p);
+                    }
+                });
+            }
             
             messageDiv.appendChild(messageBubble);
             chatMessages.appendChild(messageDiv);
@@ -457,7 +462,7 @@
                                 if (data.response) {
                                     if (isFirstChunk) {
                                         // Add new message container for the first chunk
-                                        addMessage('', false);
+                                        addMessage('', false, true);
                                         isFirstChunk = false;
                                     }
                                     
