@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Llama Chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        /* Add smooth transition for new chat */
+        .fade-out {
+            animation: fadeOut 0.3s ease-out;
+            opacity: 0;
+        }
+        
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(10px); }
+        }
+        
+        .message {
+            animation: fadeIn 0.3s ease-in-out;
+            margin-bottom: 1.25rem;
+            transition: all 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #chat-messages {
+            scroll-behavior: smooth;
+            padding: 1rem;
+            height: 100%;
+            overflow-y: auto;
+        }
+        .message-user {
+            margin-left: 20%;
+            margin-right: 0.5rem;
+        }
+        .message-ai {
+            margin-right: 20%;
+            margin-left: 0.5rem;
+        }
+        .message-bubble {
+            border-radius: 1.125rem;
+            line-height: 1.4;
+            max-width: 100%;
+            padding: 0.75rem 1.125rem;
+            position: relative;
+            word-wrap: break-word;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        .message-bubble p {
+            margin: 0.5em 0;
+        }
+        .message-bubble p:first-child {
+            margin-top: 0;
+        }
+        .message-bubble p:last-child {
+            margin-bottom: 0;
+        }
+        .message-bubble pre {
+            background-color: rgba(0, 0, 0, 0.05);
+            border-radius: 0.5rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin: 0.5em 0;
+            overflow-x: auto;
+            padding: 0.75em 1em;
+            white-space: pre-wrap;
+        }
+        .message-bubble code {
+            background-color: rgba(0, 0, 0, 0.05);
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            padding: 0.125em 0.25em;
+        }
+        .message-bubble ul, .message-bubble ol {
+            margin: 0.5em 0;
+            padding-left: 1.5em;
+        }
+        .message-bubble li {
+            margin: 0.25em 0;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+    <div class="container mx-auto px-4 py-8 max-w-4xl flex flex-col h-screen bg-gray-50">
+        <div class="bg-white shadow-sm">
+            <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+                <h1 class="text-xl font-semibold text-gray-800">Llama Chat</h1>
+                <button id="new-chat-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
+                    </svg>
+                    New Chat
+                </button>
+            </div>
+        </div>
+        <div id="chat-container" class="flex-1 bg-white rounded-lg shadow-md overflow-hidden flex flex-col">
+            <div id="chat-messages" class="flex-1 p-4 overflow-y-auto">
+                <div class="text-center text-gray-500 py-4">
+                    Start chatting with the AI. Type your message below.
+                </div>
+            </div>
+            
+            <div class="p-4 border-t border-gray-200">
+                <form id="message-form" class="flex gap-2">
+                    <input 
+                        type="text" 
+                        id="user-input" 
+                        placeholder="Type your message..." 
+                        class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        autocomplete="off"
+                    >
+                    <button 
+                        type="submit" 
+                        class="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+                        id="send-button"
+                    >
+                        Send
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const messageForm = document.getElementById('message-form');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const newChatBtn = document.getElementById('new-chat-btn');
+        let isProcessing = false;
+        let chatSessionId = localStorage.getItem('chatSessionId') || null;
+        let messageHistory = [];
+        
+        // Initialize or load chat session
+        function initializeChat() {
+            // Load previous session if exists
+            if (localStorage.getItem('messageHistory')) {
+                try {
+                    messageHistory = JSON.parse(localStorage.getItem('messageHistory'));
+                    // Only load if we have messages
+                    if (messageHistory && messageHistory.length > 0) {
+                        chatMessages.innerHTML = ''; // Clear any existing messages
+                        messageHistory.forEach(msg => {
+                            addMessage(msg.content, msg.role === 'user');
+                        });
+                        return;
+                    }
+                } catch (e) {
+                    console.error('Failed to load chat history', e);
+                }
+            }
+            
+            // If we get here, either no history or error loading it
+            startNewChat();
+        }
+        
+        // Initialize the chat when the page loads
+        document.addEventListener('DOMContentLoaded', initializeChat);
+
+        // Start a new chat session
+        function startNewChat() {
+            // Clear the chat interface
+            chatMessages.innerHTML = '';
+            
+            // Clear the message history
+            messageHistory = [];
+            localStorage.removeItem('messageHistory');
+            
+            // Generate a new session ID
+            chatSessionId = 'session-' + Date.now();
+            localStorage.setItem('chatSessionId', chatSessionId);
+            
+            // Focus the input field
+            userInput.focus();
+            
+            console.log('Started new chat session:', chatSessionId);
+        }
+        
+        // Add event listener for new chat button
+        newChatBtn.addEventListener('click', startNewChat);
+        
+        // Add a message to the chat
+        function addMessage(content, isUser = false) {
+            // If this is a duplicate message, don't add it
+            const lastMessage = chatMessages.lastElementChild;
+            if (lastMessage && 
+                ((isUser && lastMessage.classList.contains('user-message')) || 
+                 (!isUser && lastMessage.classList.contains('assistant-message'))) &&
+                lastMessage.querySelector('.message-bubble').textContent === content) {
+                return;
+            }
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message flex ${isUser ? 'justify-end user-message' : 'justify-start assistant-message'}`;
+            
+            const messageBubble = document.createElement('div');
+            messageBubble.className = `message-bubble ${
+                isUser 
+                    ? 'bg-indigo-600 text-white rounded-br-sm' 
+                    : 'bg-gray-100 text-gray-800 rounded-bl-sm border border-gray-200'
+            } ${isUser ? 'message-user' : 'message-ai'}`;
+            
+            // Process markdown-like formatting
+            let processedContent = content
+                // Convert **bold** to <strong>bold</strong>
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                // Convert *italic* to <em>italic</em>
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                // Convert `code` to <code>code</code>
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                // Convert ```code blocks``` to <pre><code>blocks</code></pre>
+                .replace(/```(?:\w+)?\n([\s\S]*?)\n```/g, '<pre><code>$1</code></pre>')
+                // Convert - list items to <ul><li>items</li></ul>
+                .replace(/^\s*-\s+(.+)$/gm, '<li>$1</li>')
+                // Convert 1. numbered items to <ol><li>items</li></ol>
+                .replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>');
+            
+            // Wrap list items in <ul> or <ol>
+            if (processedContent.includes('<li>')) {
+                processedContent = processedContent
+                    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+                    .replace(/<\/li><\/ul>\s*<ul>/g, '</li>');
+            }
+            
+            // Convert URLs to clickable links
+            processedContent = processedContent.replace(
+                /(https?:\/\/[^\s]+)/g, 
+                '<a href="$1" class="text-blue-500 hover:underline" target="_blank">$1</a>'
+            );
+            
+            // Split by double newlines to create paragraphs
+            const paragraphs = processedContent.split('\n\n');
+            
+            paragraphs.forEach((paragraph, index) => {
+                if (paragraph.trim() === '') return;
+                
+                // If it's a list or code block, add it directly
+                if (paragraph.includes('<ul>') || paragraph.includes('<ol>') || paragraph.includes('<pre>') || paragraph.includes('<code>')) {
+                    messageBubble.innerHTML += paragraph;
+                } else {
+                    const p = document.createElement('p');
+                    p.className = index < paragraphs.length - 1 ? 'mb-4' : '';
+                    p.innerHTML = paragraph || ' ';
+                    messageBubble.appendChild(p);
+                }
+            });
+            
+            messageDiv.appendChild(messageBubble);
+            chatMessages.appendChild(messageDiv);
+            
+            // Auto-scroll to the bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // If this is an AI message, highlight code blocks with Prism
+            if (!isUser) {
+                // Add Prism.js for syntax highlighting
+                if (!document.querySelector('script[src*="prism"]')) {
+                    const prismCss = document.createElement('link');
+                    prismCss.rel = 'stylesheet';
+                    prismCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css';
+                    document.head.appendChild(prismCss);
+                    
+                    const prismJs = document.createElement('script');
+                    prismJs.src = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js';
+                    prismJs.onload = () => {
+                        if (window.Prism) {
+                            window.Prism.highlightAllUnder(chatMessages);
+                        }
+                    };
+                    document.head.appendChild(prismJs);
+                } else if (window.Prism) {
+                    window.Prism.highlightAllUnder(chatMessages);
+                }
+            }
+        }
+
+        // Handle form submission
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const message = userInput.value.trim();
+            if (!message || isProcessing) return;
+            
+            // Add user message to chat
+            addMessage(message, true);
+            userInput.value = '';
+            
+            // Add the complete message to history
+            messageHistory.push({
+                role: 'user',
+                content: message
+            });
+            
+            // Disable input and button while processing
+            isProcessing = true;
+            userInput.disabled = true;
+            
+            // Add loading indicator
+            const loadingId = 'loading-' + Date.now();
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = loadingId;
+            loadingDiv.className = 'message flex justify-start';
+            loadingDiv.innerHTML = `
+                <div class="message-bubble bg-gray-100 text-gray-800 rounded-bl-sm border border-gray-200 message-ai">
+                    <div class="flex space-x-2">
+                        <div class="w-2 h-2 rounded-full bg-gray-400 animate-bounce"></div>
+                        <div class="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style="animation-delay: 0.2s"></div>
+                        <div class="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style="animation-delay: 0.4s"></div>
+                    </div>
+                </div>
+            `;
+            chatMessages.appendChild(loadingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            try {
+                // Stream the response
+                const controller = new AbortController();
+                const signal = controller.signal;
+                let response;
+                let aiResponse = '';
+                const loadingElement = document.getElementById('loading-' + Date.now());
+                
+                try {
+                    response = await fetch('/api/chat/stream', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            content: message,
+                            session_id: chatSessionId,
+                            history: messageHistory
+                        }),
+                        signal: signal
+                    });
+                    
+                    if (!response.ok) {
+                        const error = await response.text().catch(() => 'Unknown error');
+                        throw new Error(`Server error: ${response.status} - ${error}`);
+                    }
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to get response from server');
+                    }
+                    
+                    // Update session ID from response if provided
+                    const newSessionId = response.headers.get('X-Session-Id');
+                    if (newSessionId && newSessionId !== chatSessionId) {
+                        chatSessionId = newSessionId;
+                        localStorage.setItem('chatSessionId', chatSessionId);
+                    }
+                    
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder('utf-8');
+                    let assistantMessage = '';
+                    let responseBuffer = '';
+                    let isFirstChunk = true;
+                    
+                    // Remove loading message
+                    const loadingMessage = document.getElementById(loadingId);
+                    if (loadingMessage) {
+                        loadingMessage.remove();
+                    }
+                    
+                    // Set a timeout for the entire stream
+                    const streamTimeout = setTimeout(() => {
+                        controller.abort();
+                        throw new Error('Request timed out after 5 minutes');
+                    }, 300000); // 5 minute timeout
+                    
+                    // Process the streamed response
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        
+                        if (done) {
+                            clearTimeout(streamTimeout);
+                            break;
+                        }
+                        
+                        // Decode the chunk and add to buffer
+                        responseBuffer += decoder.decode(value, { stream: true });
+                        
+                        // Process complete lines from the buffer
+                        const lines = responseBuffer.split('\n');
+                        responseBuffer = lines.pop() || '';  // Keep incomplete line in buffer
+                        
+                        for (const line of lines) {
+                            if (!line.startsWith('data: ')) continue;
+                            
+                            try {
+                                const data = JSON.parse(line.slice(6));  // Remove 'data: ' prefix
+                                if (data.response) {
+                                    if (isFirstChunk) {
+                                        // Add new message container for the first chunk
+                                        addMessage('', false);
+                                        isFirstChunk = false;
+                                    }
+                                    
+                                    assistantMessage += data.response;
+                                    
+                                    // Update the last message with new content
+                                    const messages = document.querySelectorAll('.message:not(.user-message)');
+                                    const lastMessage = messages[messages.length - 1];
+                                    if (lastMessage) {
+                                        lastMessage.querySelector('.message-bubble').innerHTML = '';
+                                        const paragraphs = assistantMessage.split('\n\n');
+                                        paragraphs.forEach((para, index) => {
+                                            if (para.trim()) {
+                                                const p = document.createElement('p');
+                                                p.className = index < paragraphs.length - 1 ? 'mb-4' : '';
+                                                p.textContent = para;
+                                                lastMessage.querySelector('.message-bubble').appendChild(p);
+                                            }
+                                        });
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Error parsing chunk:', e);
+                            }
+                        }
+                    }
+                    
+                    // Add the complete message to history
+                    messageHistory.push({
+                        role: 'assistant',
+                        content: assistantMessage
+                    });
+                    
+                    // Save to localStorage
+                    localStorage.setItem('messageHistory', JSON.stringify(messageHistory));
+                    
+                    // Clear buffer and reset state
+                    responseBuffer = '';
+                    
+                } catch (error) {
+                    console.error('Stream error:', error);
+                    // Remove loading indicator
+                    const loadingElement = document.getElementById(loadingId);
+                    if (loadingElement) {
+                        loadingElement.remove();
+                    }
+                    
+                    if (error.name === 'AbortError') {
+                        addMessage('The request was aborted or timed out. Please try again.', false);
+                    } else {
+                        addMessage(`Error: ${error.message}`, false);
+                    }
+                } finally {
+                    // Always re-enable input and button
+                    isProcessing = false;
+                    userInput.disabled = false;
+                    sendButton.disabled = false;
+                    userInput.focus();
+                    
+                    // Cancel any ongoing fetch request
+                    if (controller) {
+                        controller.abort();
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Sorry, there was an error processing your request. Please try again.', false);
+                
+                // Re-enable input and button
+                isProcessing = false;
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                userInput.focus();
+            }
+        });
+
+        // Focus the input field on page load
+        window.addEventListener('load', () => {
+            userInput.focus();
+        });
+
+        // Allow Shift+Enter for new line, Enter to send
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                messageForm.dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+</html>
