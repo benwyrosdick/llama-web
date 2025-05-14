@@ -29,7 +29,7 @@ A simple web interface for interacting with Ollama's local LLM models.
 You can configure the application using the following environment variables:
 
 - `OLLAMA_API_URL`: The URL of the Ollama API (default: `http://localhost:11434/api/generate`)
-- `DEFAULT_MODEL`: The default model to use (default: `llama2`)
+- `DEFAULT_MODEL`: The default model to use (default: `llama3.2`)
 
 ## Features
 
